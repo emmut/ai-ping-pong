@@ -38,6 +38,8 @@ export default function PingPong() {
   });
 
   const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set());
+  const [gameOver, setGameOver] = useState<boolean>(false);
+  const [winner, setWinner] = useState<number>(0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -183,9 +185,17 @@ export default function PingPong() {
         // Score points and reset ball
         if (newState.ballX <= 0) {
           newState.score2++;
+          if (newState.score2 >= 10) {
+            setGameOver(true);
+            setWinner(2);
+          }
           newState = resetBall(newState);
         } else if (newState.ballX >= CANVAS_WIDTH - BALL_SIZE) {
           newState.score1++;
+          if (newState.score1 >= 10) {
+            setGameOver(true);
+            setWinner(1);
+          }
           newState = resetBall(newState);
         }
 
@@ -224,6 +234,28 @@ export default function PingPong() {
       ctx.fillText(gameState.score1.toString(), CANVAS_WIDTH / 4, 60);
       ctx.fillText(gameState.score2.toString(), (CANVAS_WIDTH * 3) / 4, 60);
 
+      // Draw game over message if game is over
+      if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "48px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          `Spelare ${winner} vann!`,
+          CANVAS_WIDTH / 2,
+          CANVAS_HEIGHT / 2
+        );
+        ctx.font = "24px Arial";
+        ctx.fillText(
+          "Tryck på mellanslag för att spela igen",
+          CANVAS_WIDTH / 2,
+          CANVAS_HEIGHT / 2 + 50
+        );
+        return;
+      }
+
       updateGame();
       requestRef.current = requestAnimationFrame(render);
     };
@@ -235,7 +267,30 @@ export default function PingPong() {
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [gameState, keysPressed]);
+  }, [gameState, keysPressed, gameOver, winner]);
+
+  // Add key handler for space to restart game
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.code === "Space" && gameOver) {
+        setGameOver(false);
+        setWinner(0);
+        setGameState({
+          ballX: CANVAS_WIDTH / 2,
+          ballY: CANVAS_HEIGHT / 2,
+          ballSpeedX: INITIAL_BALL_SPEED,
+          ballSpeedY: INITIAL_BALL_SPEED,
+          paddle1Y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+          paddle2Y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+          score1: 0,
+          score2: 0,
+        });
+      }
+    };
+
+    window.addEventListener("keypress", handleKeyPress);
+    return () => window.removeEventListener("keypress", handleKeyPress);
+  }, [gameOver]);
 
   const resetBall = (state: GameState): GameState => ({
     ...state,
