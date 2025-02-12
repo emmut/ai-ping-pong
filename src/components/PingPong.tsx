@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface GameState {
   ballX: number;
@@ -97,97 +97,101 @@ export default function PingPong() {
     );
   };
 
-  const updateGame = () => {
-    setGameState((prevState) => {
-      let newState = { ...prevState };
-
-      // Move player 1 paddle
-      if (
-        (keysPressed.has("w") || keysPressed.has("arrowup")) &&
-        newState.paddle1Y > 0
-      ) {
-        newState.paddle1Y = Math.max(0, newState.paddle1Y - PADDLE_SPEED);
-      }
-      if (
-        (keysPressed.has("s") || keysPressed.has("arrowdown")) &&
-        newState.paddle1Y < CANVAS_HEIGHT - PADDLE_HEIGHT
-      ) {
-        newState.paddle1Y = Math.min(
-          CANVAS_HEIGHT - PADDLE_HEIGHT,
-          newState.paddle1Y + PADDLE_SPEED
-        );
-      }
-
-      // AI movement for paddle 2
-      const targetY = predictBallY(newState);
-      const moveDistance = (targetY - newState.paddle2Y) * AI_REACTION_SPEED;
-
-      newState.paddle2Y = Math.min(
-        Math.max(newState.paddle2Y + moveDistance, 0),
-        CANVAS_HEIGHT - PADDLE_HEIGHT
-      );
-
-      // Move ball
-      newState.ballX += newState.ballSpeedX;
-      newState.ballY += newState.ballSpeedY;
-
-      // Ball collision with top and bottom
-      if (newState.ballY <= 0 || newState.ballY >= CANVAS_HEIGHT - BALL_SIZE) {
-        newState.ballSpeedY = -newState.ballSpeedY;
-      }
-
-      // Ball collision with paddles
-      if (
-        // Left paddle collision
-        (newState.ballX <= PADDLE_WIDTH &&
-          newState.ballX >= 0 &&
-          newState.ballY + BALL_SIZE >= newState.paddle1Y &&
-          newState.ballY <= newState.paddle1Y + PADDLE_HEIGHT) ||
-        // Right paddle collision
-        (newState.ballX + BALL_SIZE >= CANVAS_WIDTH - PADDLE_WIDTH &&
-          newState.ballX <= CANVAS_WIDTH &&
-          newState.ballY + BALL_SIZE >= newState.paddle2Y &&
-          newState.ballY <= newState.paddle2Y + PADDLE_HEIGHT)
-      ) {
-        // Update ball speed with limits
-        newState.ballSpeedX = -newState.ballSpeedX * BALL_SPEED_MULTIPLIER;
-
-        // Limit maximum ball speed
-        if (Math.abs(newState.ballSpeedX) > MAX_BALL_SPEED) {
-          newState.ballSpeedX = MAX_BALL_SPEED * Math.sign(newState.ballSpeedX);
-        }
-
-        // Calculate impact point relative to paddle center (-0.5 to 0.5)
-        const relativeIntersectY =
-          (newState.ballSpeedX > 0
-            ? newState.ballY - newState.paddle2Y
-            : newState.ballY - newState.paddle1Y) /
-            PADDLE_HEIGHT -
-          0.5;
-
-        // Set vertical speed based on impact point
-        newState.ballSpeedY = INITIAL_BALL_SPEED * 1.5 * relativeIntersectY;
-      }
-
-      // Score points and reset ball
-      if (newState.ballX <= 0) {
-        newState.score2++;
-        newState = resetBall(newState);
-      } else if (newState.ballX >= CANVAS_WIDTH - BALL_SIZE) {
-        newState.score1++;
-        newState = resetBall(newState);
-      }
-
-      return newState;
-    });
-  };
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    const updateGame = () => {
+      setGameState((prevState) => {
+        let newState = { ...prevState };
+
+        // Move player 1 paddle
+        if (
+          (keysPressed.has("w") || keysPressed.has("arrowup")) &&
+          newState.paddle1Y > 0
+        ) {
+          newState.paddle1Y = Math.max(0, newState.paddle1Y - PADDLE_SPEED);
+        }
+        if (
+          (keysPressed.has("s") || keysPressed.has("arrowdown")) &&
+          newState.paddle1Y < CANVAS_HEIGHT - PADDLE_HEIGHT
+        ) {
+          newState.paddle1Y = Math.min(
+            CANVAS_HEIGHT - PADDLE_HEIGHT,
+            newState.paddle1Y + PADDLE_SPEED
+          );
+        }
+
+        // AI movement for paddle 2
+        const targetY = predictBallY(newState);
+        const moveDistance = (targetY - newState.paddle2Y) * AI_REACTION_SPEED;
+
+        newState.paddle2Y = Math.min(
+          Math.max(newState.paddle2Y + moveDistance, 0),
+          CANVAS_HEIGHT - PADDLE_HEIGHT
+        );
+
+        // Move ball
+        newState.ballX += newState.ballSpeedX;
+        newState.ballY += newState.ballSpeedY;
+
+        // Ball collision with top and bottom
+        if (
+          newState.ballY <= 0 ||
+          newState.ballY >= CANVAS_HEIGHT - BALL_SIZE
+        ) {
+          newState.ballSpeedY = -newState.ballSpeedY;
+        }
+
+        // Ball collision with paddles
+        if (
+          // Left paddle collision
+          (newState.ballX <= PADDLE_WIDTH &&
+            newState.ballX >= 0 &&
+            newState.ballY + BALL_SIZE >= newState.paddle1Y &&
+            newState.ballY <= newState.paddle1Y + PADDLE_HEIGHT) ||
+          // Right paddle collision
+          (newState.ballX + BALL_SIZE >= CANVAS_WIDTH - PADDLE_WIDTH &&
+            newState.ballX <= CANVAS_WIDTH &&
+            newState.ballY + BALL_SIZE >= newState.paddle2Y &&
+            newState.ballY <= newState.paddle2Y + PADDLE_HEIGHT)
+        ) {
+          // Update ball speed with limits
+          newState.ballSpeedX = -newState.ballSpeedX * BALL_SPEED_MULTIPLIER;
+
+          // Limit maximum ball speed
+          if (Math.abs(newState.ballSpeedX) > MAX_BALL_SPEED) {
+            newState.ballSpeedX =
+              MAX_BALL_SPEED * Math.sign(newState.ballSpeedX);
+          }
+
+          // Calculate impact point relative to paddle center (-0.5 to 0.5)
+          const relativeIntersectY =
+            (newState.ballSpeedX > 0
+              ? newState.ballY - newState.paddle2Y
+              : newState.ballY - newState.paddle1Y) /
+              PADDLE_HEIGHT -
+            0.5;
+
+          // Set vertical speed based on impact point
+          newState.ballSpeedY = INITIAL_BALL_SPEED * 1.5 * relativeIntersectY;
+        }
+
+        // Score points and reset ball
+        if (newState.ballX <= 0) {
+          newState.score2++;
+          newState = resetBall(newState);
+        } else if (newState.ballX >= CANVAS_WIDTH - BALL_SIZE) {
+          newState.score1++;
+          newState = resetBall(newState);
+        }
+
+        return newState;
+      });
+    };
 
     const render = () => {
       // Clear canvas
