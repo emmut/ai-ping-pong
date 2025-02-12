@@ -79,7 +79,7 @@ export default function PingPong() {
   const predictBallY = (state: GameState): number => {
     // Beräkna nytt fel när bollen börjar röra sig mot AI:et
     if (state.ballSpeedX > 0 && prevBallSpeedXRef.current <= 0) {
-      const errorMargin = PADDLE_HEIGHT * 0.7;
+      const errorMargin = PADDLE_HEIGHT * 0.9;
       const newError = (Math.random() - 0.5) * errorMargin;
 
       // 10% chans för stort misstag
@@ -147,10 +147,14 @@ export default function PingPong() {
 
         // AI movement for paddle 2
         const targetY = predictBallY(newState);
-        const moveDistance = (targetY - newState.paddle2Y) * AI_REACTION_SPEED;
+        const paddleSpeed = PADDLE_SPEED * 0.6; // Gör AI:et lite långsammare än spelaren
+        const distance = targetY - newState.paddle2Y;
+        const moveDirection = Math.sign(distance);
+        const moveAmount = Math.min(Math.abs(distance), paddleSpeed);
 
+        // Uppdatera paddle2Y position med begränsningar
         newState.paddle2Y = Math.min(
-          Math.max(newState.paddle2Y + moveDistance, 0),
+          Math.max(newState.paddle2Y + moveDirection * moveAmount, 0),
           CANVAS_HEIGHT - PADDLE_HEIGHT
         );
 
