@@ -178,8 +178,9 @@ export default function PingPong() {
               PADDLE_HEIGHT -
             0.5;
 
-          // Set vertical speed based on impact point
-          newState.ballSpeedY = INITIAL_BALL_SPEED * 1.5 * relativeIntersectY;
+          // Set vertical speed based on impact point with more controlled angle
+          const maxVerticalSpeed = Math.abs(newState.ballSpeedX) * 0.3;
+          newState.ballSpeedY = maxVerticalSpeed * relativeIntersectY;
         }
 
         // Score points and reset ball
