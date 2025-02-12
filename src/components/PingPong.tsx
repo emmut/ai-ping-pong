@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 interface GameState {
   ballX: number;
@@ -19,9 +19,11 @@ const PADDLE_WIDTH = 10;
 const BALL_SIZE = 10;
 const PADDLE_SPEED = 12;
 const INITIAL_BALL_SPEED = 5;
-const AI_REACTION_SPEED = 0.4; // Controls how quickly the AI responds (1.0 = perfect)
 const MAX_BALL_SPEED = 10;
 const BALL_SPEED_MULTIPLIER = 1.05;
+const AI_MAX_SPEED = PADDLE_SPEED * 0.6;
+const AI_ACCELERATION = 0.8;
+const AI_DECELERATION = 0.7;
 
 export default function PingPong() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,6 +43,7 @@ export default function PingPong() {
   const [gameOver, setGameOver] = useState<boolean>(false);
   const [winner, setWinner] = useState<number>(0);
   const [aiError, setAiError] = useState<number>(0);
+  const [aiVelocity, setAiVelocity] = useState<number>(0);
 
   // Lägg till en ref för att spara föregående bollhastighet
   const prevBallSpeedXRef = useRef<number>(0);
@@ -75,47 +78,49 @@ export default function PingPong() {
     };
   }, []);
 
-  // AI prediction function
-  const predictBallY = (state: GameState): number => {
-    // Beräkna nytt fel när bollen börjar röra sig mot AI:et
-    if (state.ballSpeedX > 0 && prevBallSpeedXRef.current <= 0) {
-      const errorMargin = PADDLE_HEIGHT * 0.9;
-      const newError = (Math.random() - 0.5) * errorMargin;
+  const predictBallY = useCallback(
+    (state: GameState): number => {
+      // Beräkna nytt fel när bollen börjar röra sig mot AI:et
+      if (state.ballSpeedX > 0 && prevBallSpeedXRef.current <= 0) {
+        const errorMargin = PADDLE_HEIGHT * 0.9;
+        const newError = (Math.random() - 0.5) * errorMargin;
 
-      // 10% chans för stort misstag
-      if (Math.random() < 0.1) {
-        setAiError(CANVAS_HEIGHT * Math.random());
-        return Math.random() * (CANVAS_HEIGHT - PADDLE_HEIGHT);
+        // 10% chans för stort misstag
+        if (Math.random() < 0.1) {
+          setAiError(CANVAS_HEIGHT * Math.random());
+          return Math.random() * (CANVAS_HEIGHT - PADDLE_HEIGHT);
+        }
+
+        setAiError(newError);
       }
 
-      setAiError(newError);
-    }
+      // Spara nuvarande bollhastighet för nästa frame
+      prevBallSpeedXRef.current = state.ballSpeedX;
 
-    // Spara nuvarande bollhastighet för nästa frame
-    prevBallSpeedXRef.current = state.ballSpeedX;
-
-    if (state.ballSpeedX <= 0) {
-      return state.ballY;
-    }
-
-    let predictedX = state.ballX;
-    let predictedY = state.ballY;
-    let predictedSpeedY = state.ballSpeedY;
-
-    while (predictedX < CANVAS_WIDTH - PADDLE_WIDTH - BALL_SIZE) {
-      predictedX += state.ballSpeedX;
-      predictedY += predictedSpeedY;
-
-      if (predictedY <= 0 || predictedY >= CANVAS_HEIGHT - BALL_SIZE) {
-        predictedSpeedY = -predictedSpeedY;
+      if (state.ballSpeedX <= 0) {
+        return state.ballY;
       }
-    }
 
-    return Math.min(
-      Math.max(predictedY + aiError - PADDLE_HEIGHT / 2, 0),
-      CANVAS_HEIGHT - PADDLE_HEIGHT
-    );
-  };
+      let predictedX = state.ballX;
+      let predictedY = state.ballY;
+      let predictedSpeedY = state.ballSpeedY;
+
+      while (predictedX < CANVAS_WIDTH - PADDLE_WIDTH - BALL_SIZE) {
+        predictedX += state.ballSpeedX;
+        predictedY += predictedSpeedY;
+
+        if (predictedY <= 0 || predictedY >= CANVAS_HEIGHT - BALL_SIZE) {
+          predictedSpeedY = -predictedSpeedY;
+        }
+      }
+
+      return Math.min(
+        Math.max(predictedY + aiError - PADDLE_HEIGHT / 2, 0),
+        CANVAS_HEIGHT - PADDLE_HEIGHT
+      );
+    },
+    [aiError]
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -147,16 +152,29 @@ export default function PingPong() {
 
         // AI movement for paddle 2
         const targetY = predictBallY(newState);
-        const paddleSpeed = PADDLE_SPEED * 0.6; // Gör AI:et lite långsammare än spelaren
         const distance = targetY - newState.paddle2Y;
-        const moveDirection = Math.sign(distance);
-        const moveAmount = Math.min(Math.abs(distance), paddleSpeed);
 
-        // Uppdatera paddle2Y position med begränsningar
+        // Uppdatera AI:ets hastighet med acceleration/inbromsning
+        let newVelocity = aiVelocity;
+
+        if (Math.abs(distance) > 10) {
+          // Accelerera mot målet
+          newVelocity += Math.sign(distance) * AI_ACCELERATION;
+          newVelocity =
+            Math.sign(newVelocity) *
+            Math.min(Math.abs(newVelocity), AI_MAX_SPEED);
+        } else {
+          // Bromsa in när vi närmar oss målet
+          newVelocity *= AI_DECELERATION;
+        }
+
+        // Applicera hastigheten på paddeln med begränsningar
         newState.paddle2Y = Math.min(
-          Math.max(newState.paddle2Y + moveDirection * moveAmount, 0),
+          Math.max(newState.paddle2Y + newVelocity, 0),
           CANVAS_HEIGHT - PADDLE_HEIGHT
         );
+
+        setAiVelocity(newVelocity);
 
         // Move ball
         newState.ballX += newState.ballSpeedX;
@@ -290,7 +308,7 @@ export default function PingPong() {
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [gameState, keysPressed, gameOver, winner]);
+  }, [gameState, keysPressed, gameOver, winner, aiVelocity, predictBallY]);
 
   // Add key handler for space to restart game
   useEffect(() => {
@@ -298,6 +316,7 @@ export default function PingPong() {
       if (e.code === "Space" && gameOver) {
         setGameOver(false);
         setWinner(0);
+        setAiVelocity(0);
         setGameState({
           ballX: CANVAS_WIDTH / 2,
           ballY: CANVAS_HEIGHT / 2,
