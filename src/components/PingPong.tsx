@@ -40,6 +40,10 @@ export default function PingPong() {
   const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set());
   const [gameOver, setGameOver] = useState<boolean>(false);
   const [winner, setWinner] = useState<number>(0);
+  const [aiError, setAiError] = useState<number>(0);
+
+  // Lägg till en ref för att spara föregående bollhastighet
+  const prevBallSpeedXRef = useRef<number>(0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -73,28 +77,42 @@ export default function PingPong() {
 
   // AI prediction function
   const predictBallY = (state: GameState): number => {
+    // Beräkna nytt fel när bollen börjar röra sig mot AI:et
+    if (state.ballSpeedX > 0 && prevBallSpeedXRef.current <= 0) {
+      const errorMargin = PADDLE_HEIGHT * 0.7;
+      const newError = (Math.random() - 0.5) * errorMargin;
+
+      // 10% chans för stort misstag
+      if (Math.random() < 0.1) {
+        setAiError(CANVAS_HEIGHT * Math.random());
+        return Math.random() * (CANVAS_HEIGHT - PADDLE_HEIGHT);
+      }
+
+      setAiError(newError);
+    }
+
+    // Spara nuvarande bollhastighet för nästa frame
+    prevBallSpeedXRef.current = state.ballSpeedX;
+
     if (state.ballSpeedX <= 0) {
-      return state.ballY; // Ball moving away, stay in current position
+      return state.ballY;
     }
 
     let predictedX = state.ballX;
     let predictedY = state.ballY;
     let predictedSpeedY = state.ballSpeedY;
 
-    // Simulate ball movement until it reaches the AI paddle
     while (predictedX < CANVAS_WIDTH - PADDLE_WIDTH - BALL_SIZE) {
       predictedX += state.ballSpeedX;
       predictedY += predictedSpeedY;
 
-      // Simulate bounces off top and bottom
       if (predictedY <= 0 || predictedY >= CANVAS_HEIGHT - BALL_SIZE) {
         predictedSpeedY = -predictedSpeedY;
       }
     }
 
-    // Return predicted Y position, accounting for paddle height
     return Math.min(
-      Math.max(predictedY - PADDLE_HEIGHT / 2, 0),
+      Math.max(predictedY + aiError - PADDLE_HEIGHT / 2, 0),
       CANVAS_HEIGHT - PADDLE_HEIGHT
     );
   };
