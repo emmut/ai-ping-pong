@@ -45,7 +45,7 @@ export default function PingPong() {
   const [aiError, setAiError] = useState<number>(0);
   const [aiVelocity, setAiVelocity] = useState<number>(0);
 
-  // Lägg till en ref för att spara föregående bollhastighet
+  // Add ref to store previous ball speed
   const prevBallSpeedXRef = useRef<number>(0);
 
   useEffect(() => {
@@ -80,12 +80,12 @@ export default function PingPong() {
 
   const predictBallY = useCallback(
     (state: GameState): number => {
-      // Beräkna nytt fel när bollen börjar röra sig mot AI:et
+      // Calculate new error when ball starts moving towards AI
       if (state.ballSpeedX > 0 && prevBallSpeedXRef.current <= 0) {
         const errorMargin = PADDLE_HEIGHT * 1.3;
         const newError = (Math.random() - 0.5) * errorMargin;
 
-        // 10% chans för stort misstag
+        // 10% chance for major mistake
         if (Math.random() < 0.1) {
           setAiError(CANVAS_HEIGHT * Math.random());
           return Math.random() * (CANVAS_HEIGHT - PADDLE_HEIGHT);
@@ -94,7 +94,7 @@ export default function PingPong() {
         setAiError(newError);
       }
 
-      // Spara nuvarande bollhastighet för nästa frame
+      // Save current ball speed for next frame
       prevBallSpeedXRef.current = state.ballSpeedX;
 
       if (state.ballSpeedX <= 0) {
@@ -154,21 +154,21 @@ export default function PingPong() {
         const targetY = predictBallY(newState);
         const distance = targetY - newState.paddle2Y;
 
-        // Uppdatera AI:ets hastighet med acceleration/inbromsning
+        // Update AI velocity with acceleration/deceleration
         let newVelocity = aiVelocity;
 
         if (Math.abs(distance) > 10) {
-          // Accelerera mot målet
+          // Accelerate towards target
           newVelocity += Math.sign(distance) * AI_ACCELERATION;
           newVelocity =
             Math.sign(newVelocity) *
             Math.min(Math.abs(newVelocity), AI_MAX_SPEED);
         } else {
-          // Bromsa in när vi närmar oss målet
+          // Decelerate when approaching target
           newVelocity *= AI_DECELERATION;
         }
 
-        // Applicera hastigheten på paddeln med begränsningar
+        // Apply velocity to paddle with boundaries
         newState.paddle2Y = Math.min(
           Math.max(newState.paddle2Y + newVelocity, 0),
           CANVAS_HEIGHT - PADDLE_HEIGHT
@@ -284,13 +284,13 @@ export default function PingPong() {
         ctx.font = "48px Arial";
         ctx.textAlign = "center";
         ctx.fillText(
-          `Spelare ${winner} vann!`,
+          `Player ${winner} won!`,
           CANVAS_WIDTH / 2,
           CANVAS_HEIGHT / 2
         );
         ctx.font = "24px Arial";
         ctx.fillText(
-          "Tryck på mellanslag för att spela igen",
+          "Press space to play again",
           CANVAS_WIDTH / 2,
           CANVAS_HEIGHT / 2 + 50
         );
