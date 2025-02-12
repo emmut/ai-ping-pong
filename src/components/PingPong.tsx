@@ -82,7 +82,7 @@ export default function PingPong() {
     (state: GameState): number => {
       // Beräkna nytt fel när bollen börjar röra sig mot AI:et
       if (state.ballSpeedX > 0 && prevBallSpeedXRef.current <= 0) {
-        const errorMargin = PADDLE_HEIGHT * 0.9;
+        const errorMargin = PADDLE_HEIGHT * 1.3;
         const newError = (Math.random() - 0.5) * errorMargin;
 
         // 10% chans för stort misstag
