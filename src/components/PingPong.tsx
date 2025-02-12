@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from "react";
 
 interface GameState {
   ballX: number;
@@ -11,14 +11,19 @@ interface GameState {
   score2: number;
 }
 
+// Game constants
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 500;
 const PADDLE_HEIGHT = 100;
 const PADDLE_WIDTH = 10;
 const BALL_SIZE = 10;
 const PADDLE_SPEED = 12;
-const INITIAL_BALL_SPEED = 8;
-const AI_REACTION_SPEED = 0.8; // AI movement speed multiplier (1.0 would be perfect)
+const INITIAL_BALL_SPEED = 5;
+const MAX_BALL_SPEED = 10;
+const BALL_SPEED_MULTIPLIER = 1.05;
+const AI_MAX_SPEED = PADDLE_SPEED * 0.6;
+const AI_ACCELERATION = 0.8;
+const AI_DECELERATION = 0.7;
 
 export default function PingPong() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -31,139 +36,217 @@ export default function PingPong() {
     paddle1Y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
     paddle2Y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
     score1: 0,
-    score2: 0
+    score2: 0,
   });
 
   const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set());
+  const [gameOver, setGameOver] = useState<boolean>(false);
+  const [winner, setWinner] = useState<number>(0);
+  const [aiError, setAiError] = useState<number>(0);
+  const [aiVelocity, setAiVelocity] = useState<number>(0);
+
+  // Add ref to store previous ball speed
+  const prevBallSpeedXRef = useRef<number>(0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      e.preventDefault();
-      setKeysPressed(prev => new Set(prev).add(e.key.toLowerCase()));
+      const key = e.key.toLowerCase();
+      if (["w", "s", "arrowup", "arrowdown"].includes(key)) {
+        e.preventDefault();
+      }
+      setKeysPressed((prev) => new Set(prev).add(key));
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      e.preventDefault();
-      setKeysPressed(prev => {
+      const key = e.key.toLowerCase();
+      if (["w", "s", "arrowup", "arrowdown"].includes(key)) {
+        e.preventDefault();
+      }
+      setKeysPressed((prev) => {
         const next = new Set(prev);
-        next.delete(e.key.toLowerCase());
+        next.delete(key);
         return next;
       });
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
 
-  // AI prediction function
-  const predictBallY = (state: GameState): number => {
-    if (state.ballSpeedX <= 0) {
-      return state.ballY; // Ball moving away, stay in current position
-    }
+  const predictBallY = useCallback(
+    (state: GameState): number => {
+      // Calculate new error when ball starts moving towards AI
+      if (state.ballSpeedX > 0 && prevBallSpeedXRef.current <= 0) {
+        const errorMargin = PADDLE_HEIGHT * 1.3;
+        const newError = (Math.random() - 0.5) * errorMargin;
 
-    let predictedX = state.ballX;
-    let predictedY = state.ballY;
-    let predictedSpeedY = state.ballSpeedY;
+        // 10% chance for major mistake
+        if (Math.random() < 0.1) {
+          setAiError(CANVAS_HEIGHT * Math.random());
+          return Math.random() * (CANVAS_HEIGHT - PADDLE_HEIGHT);
+        }
 
-    // Simulate ball movement until it reaches the AI paddle
-    while (predictedX < CANVAS_WIDTH - PADDLE_WIDTH - BALL_SIZE) {
-      predictedX += state.ballSpeedX;
-      predictedY += predictedSpeedY;
-
-      // Simulate bounces off top and bottom
-      if (predictedY <= 0 || predictedY >= CANVAS_HEIGHT - BALL_SIZE) {
-        predictedSpeedY = -predictedSpeedY;
-      }
-    }
-
-    // Return predicted Y position, accounting for paddle height
-    return Math.min(
-      Math.max(
-        predictedY - PADDLE_HEIGHT / 2,
-        0
-      ),
-      CANVAS_HEIGHT - PADDLE_HEIGHT
-    );
-  };
-
-  const updateGame = () => {
-    setGameState(prevState => {
-      let newState = { ...prevState };
-
-      // Move player 1 paddle
-      if (keysPressed.has('w') && newState.paddle1Y > 0) {
-        newState.paddle1Y = Math.max(0, newState.paddle1Y - PADDLE_SPEED);
-      }
-      if (keysPressed.has('s') && newState.paddle1Y < CANVAS_HEIGHT - PADDLE_HEIGHT) {
-        newState.paddle1Y = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, newState.paddle1Y + PADDLE_SPEED);
+        setAiError(newError);
       }
 
-      // AI movement for paddle 2
-      const targetY = predictBallY(newState);
-      const paddleCenterY = newState.paddle2Y + PADDLE_HEIGHT / 2;
-      const moveDistance = (targetY - newState.paddle2Y) * AI_REACTION_SPEED;
+      // Save current ball speed for next frame
+      prevBallSpeedXRef.current = state.ballSpeedX;
 
-      newState.paddle2Y = Math.min(
-        Math.max(
-          newState.paddle2Y + moveDistance,
-          0
-        ),
+      if (state.ballSpeedX <= 0) {
+        return state.ballY;
+      }
+
+      let predictedX = state.ballX;
+      let predictedY = state.ballY;
+      let predictedSpeedY = state.ballSpeedY;
+
+      while (predictedX < CANVAS_WIDTH - PADDLE_WIDTH - BALL_SIZE) {
+        predictedX += state.ballSpeedX;
+        predictedY += predictedSpeedY;
+
+        if (predictedY <= 0 || predictedY >= CANVAS_HEIGHT - BALL_SIZE) {
+          predictedSpeedY = -predictedSpeedY;
+        }
+      }
+
+      return Math.min(
+        Math.max(predictedY + aiError - PADDLE_HEIGHT / 2, 0),
         CANVAS_HEIGHT - PADDLE_HEIGHT
       );
-
-      // Move ball
-      newState.ballX += newState.ballSpeedX;
-      newState.ballY += newState.ballSpeedY;
-
-      // Ball collision with top and bottom
-      if (newState.ballY <= 0 || newState.ballY >= CANVAS_HEIGHT - BALL_SIZE) {
-        newState.ballSpeedY = -newState.ballSpeedY;
-      }
-
-      // Ball collision with paddles
-      if (
-        (newState.ballX <= PADDLE_WIDTH && 
-         newState.ballY >= newState.paddle1Y && 
-         newState.ballY <= newState.paddle1Y + PADDLE_HEIGHT) ||
-        (newState.ballX >= CANVAS_WIDTH - PADDLE_WIDTH - BALL_SIZE && 
-         newState.ballY >= newState.paddle2Y && 
-         newState.ballY <= newState.paddle2Y + PADDLE_HEIGHT)
-      ) {
-        newState.ballSpeedX = -newState.ballSpeedX * 1.1;
-        newState.ballSpeedY *= 1.1;
-
-        // Add slight randomization to ball direction after paddle hits
-        newState.ballSpeedY += (Math.random() - 0.5) * 2;
-      }
-
-      // Score points and reset ball
-      if (newState.ballX <= 0) {
-        newState.score2++;
-        newState = resetBall(newState);
-      } else if (newState.ballX >= CANVAS_WIDTH - BALL_SIZE) {
-        newState.score1++;
-        newState = resetBall(newState);
-      }
-
-      return newState;
-    });
-  };
+    },
+    [aiError]
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    const updateGame = () => {
+      setGameState((prevState) => {
+        let newState = { ...prevState };
+
+        // Move player 1 paddle
+        if (
+          (keysPressed.has("w") || keysPressed.has("arrowup")) &&
+          newState.paddle1Y > 0
+        ) {
+          newState.paddle1Y = Math.max(0, newState.paddle1Y - PADDLE_SPEED);
+        }
+        if (
+          (keysPressed.has("s") || keysPressed.has("arrowdown")) &&
+          newState.paddle1Y < CANVAS_HEIGHT - PADDLE_HEIGHT
+        ) {
+          newState.paddle1Y = Math.min(
+            CANVAS_HEIGHT - PADDLE_HEIGHT,
+            newState.paddle1Y + PADDLE_SPEED
+          );
+        }
+
+        // AI movement for paddle 2
+        const targetY = predictBallY(newState);
+        const distance = targetY - newState.paddle2Y;
+
+        // Update AI velocity with acceleration/deceleration
+        let newVelocity = aiVelocity;
+
+        if (Math.abs(distance) > 10) {
+          // Accelerate towards target
+          newVelocity += Math.sign(distance) * AI_ACCELERATION;
+          newVelocity =
+            Math.sign(newVelocity) *
+            Math.min(Math.abs(newVelocity), AI_MAX_SPEED);
+        } else {
+          // Decelerate when approaching target
+          newVelocity *= AI_DECELERATION;
+        }
+
+        // Apply velocity to paddle with boundaries
+        newState.paddle2Y = Math.min(
+          Math.max(newState.paddle2Y + newVelocity, 0),
+          CANVAS_HEIGHT - PADDLE_HEIGHT
+        );
+
+        setAiVelocity(newVelocity);
+
+        // Move ball
+        newState.ballX += newState.ballSpeedX;
+        newState.ballY += newState.ballSpeedY;
+
+        // Ball collision with top and bottom
+        if (
+          newState.ballY <= 0 ||
+          newState.ballY >= CANVAS_HEIGHT - BALL_SIZE
+        ) {
+          newState.ballSpeedY = -newState.ballSpeedY;
+        }
+
+        // Ball collision with paddles
+        if (
+          // Left paddle collision
+          (newState.ballX <= PADDLE_WIDTH &&
+            newState.ballX >= 0 &&
+            newState.ballY + BALL_SIZE >= newState.paddle1Y &&
+            newState.ballY <= newState.paddle1Y + PADDLE_HEIGHT) ||
+          // Right paddle collision
+          (newState.ballX + BALL_SIZE >= CANVAS_WIDTH - PADDLE_WIDTH &&
+            newState.ballX <= CANVAS_WIDTH &&
+            newState.ballY + BALL_SIZE >= newState.paddle2Y &&
+            newState.ballY <= newState.paddle2Y + PADDLE_HEIGHT)
+        ) {
+          // Update ball speed with limits
+          newState.ballSpeedX = -newState.ballSpeedX * BALL_SPEED_MULTIPLIER;
+
+          // Limit maximum ball speed
+          if (Math.abs(newState.ballSpeedX) > MAX_BALL_SPEED) {
+            newState.ballSpeedX =
+              MAX_BALL_SPEED * Math.sign(newState.ballSpeedX);
+          }
+
+          // Calculate impact point relative to paddle center (-0.5 to 0.5)
+          const relativeIntersectY =
+            (newState.ballSpeedX > 0
+              ? newState.ballY - newState.paddle2Y
+              : newState.ballY - newState.paddle1Y) /
+              PADDLE_HEIGHT -
+            0.5;
+
+          // Set vertical speed based on impact point with more controlled angle
+          const maxVerticalSpeed = Math.abs(newState.ballSpeedX) * 0.3;
+          newState.ballSpeedY = maxVerticalSpeed * relativeIntersectY;
+        }
+
+        // Score points and reset ball
+        if (newState.ballX <= 0) {
+          newState.score2++;
+          if (newState.score2 >= 10) {
+            setGameOver(true);
+            setWinner(2);
+          }
+          newState = resetBall(newState);
+        } else if (newState.ballX >= CANVAS_WIDTH - BALL_SIZE) {
+          newState.score1++;
+          if (newState.score1 >= 10) {
+            setGameOver(true);
+            setWinner(1);
+          }
+          newState = resetBall(newState);
+        }
+
+        return newState;
+      });
+    };
 
     const render = () => {
       // Clear canvas
-      ctx.fillStyle = '#1a1a1a';
+      ctx.fillStyle = "#1a1a1a";
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
       // Draw center line
@@ -171,21 +254,48 @@ export default function PingPong() {
       ctx.beginPath();
       ctx.moveTo(CANVAS_WIDTH / 2, 0);
       ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = "#333";
       ctx.stroke();
 
       // Draw paddles
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = "#fff";
       ctx.fillRect(0, gameState.paddle1Y, PADDLE_WIDTH, PADDLE_HEIGHT);
-      ctx.fillRect(CANVAS_WIDTH - PADDLE_WIDTH, gameState.paddle2Y, PADDLE_WIDTH, PADDLE_HEIGHT);
+      ctx.fillRect(
+        CANVAS_WIDTH - PADDLE_WIDTH,
+        gameState.paddle2Y,
+        PADDLE_WIDTH,
+        PADDLE_HEIGHT
+      );
 
       // Draw ball
       ctx.fillRect(gameState.ballX, gameState.ballY, BALL_SIZE, BALL_SIZE);
 
       // Draw scores
-      ctx.font = '48px Arial';
+      ctx.font = "48px Arial";
       ctx.fillText(gameState.score1.toString(), CANVAS_WIDTH / 4, 60);
       ctx.fillText(gameState.score2.toString(), (CANVAS_WIDTH * 3) / 4, 60);
+
+      // Draw game over message if game is over
+      if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "48px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          `Player ${winner} won!`,
+          CANVAS_WIDTH / 2,
+          CANVAS_HEIGHT / 2
+        );
+        ctx.font = "24px Arial";
+        ctx.fillText(
+          "Press space to play again",
+          CANVAS_WIDTH / 2,
+          CANVAS_HEIGHT / 2 + 50
+        );
+        return;
+      }
 
       updateGame();
       requestRef.current = requestAnimationFrame(render);
@@ -198,21 +308,45 @@ export default function PingPong() {
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [gameState, keysPressed]);
+  }, [gameState, keysPressed, gameOver, winner, aiVelocity, predictBallY]);
+
+  // Add key handler for space to restart game
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.code === "Space" && gameOver) {
+        setGameOver(false);
+        setWinner(0);
+        setAiVelocity(0);
+        setGameState({
+          ballX: CANVAS_WIDTH / 2,
+          ballY: CANVAS_HEIGHT / 2,
+          ballSpeedX: INITIAL_BALL_SPEED,
+          ballSpeedY: INITIAL_BALL_SPEED,
+          paddle1Y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+          paddle2Y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+          score1: 0,
+          score2: 0,
+        });
+      }
+    };
+
+    window.addEventListener("keypress", handleKeyPress);
+    return () => window.removeEventListener("keypress", handleKeyPress);
+  }, [gameOver]);
 
   const resetBall = (state: GameState): GameState => ({
     ...state,
     ballX: CANVAS_WIDTH / 2,
     ballY: CANVAS_HEIGHT / 2,
     ballSpeedX: INITIAL_BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
-    ballSpeedY: INITIAL_BALL_SPEED * (Math.random() * 2 - 1)
+    ballSpeedY: INITIAL_BALL_SPEED * (Math.random() - 0.5),
   });
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 p-4">
       <div className="mb-4 text-white text-center">
         <h1 className="text-3xl font-bold mb-4">Ping Pong</h1>
-        <p className="mb-2">Player 1: W/S keys | Player 2: AI</p>
+        <p className="mb-2">Player 1: W/S or Arrow Up/Down | Player 2: AI</p>
       </div>
       <canvas
         ref={canvasRef}
